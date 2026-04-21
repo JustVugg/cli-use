@@ -5,7 +5,7 @@
 **Turn any MCP server into a CLI in one command.** Cut the token cost of AI agents by 60–80%, every call, forever.
 
 ```bash
-pip install cli-use
+pip install e.
 cli-use add fs /tmp                # install + register + emit SKILL.md
 cli-use fs list_directory --path /tmp
 ```
