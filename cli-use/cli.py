@@ -71,6 +71,51 @@ def _fetch_tools(cmd: list[str], env: dict[str, str]) -> list[Tool]:
         return c.list_tools()
 
 
+def _tool_to_dict(tool: Tool) -> dict[str, object]:
+    return {
+        "name": tool.name,
+        "description": tool.description,
+        "inputSchema": tool.input_schema,
+    }
+
+
+def _tool_from_dict(raw: dict[str, object]) -> Tool:
+    return Tool(
+        name=str(raw["name"]),
+        description=str(raw.get("description", "")),
+        input_schema=raw.get("inputSchema", {}) or {},
+    )
+
+
+def _read_cached_tools(alias: str) -> list[Tool] | None:
+    cached = config.read_cached_tools(alias)
+    if cached is None:
+        return None
+    return [_tool_from_dict(item) for item in cached if isinstance(item, dict) and item.get("name")]
+
+
+def _write_cached_tools(alias: str, tools: list[Tool]) -> None:
+    config.write_cached_tools(alias, [_tool_to_dict(tool) for tool in tools])
+
+
+def _get_tools(
+    entry: RegistryEntry,
+    mcp_cmd: list[str],
+    env: dict[str, str],
+    *,
+    prefer_cache: bool = True,
+    refresh: bool = False,
+) -> list[Tool]:
+    if prefer_cache and not refresh:
+        cached = _read_cached_tools(entry.alias)
+        if cached is not None:
+            return cached
+
+    tools = _fetch_tools(mcp_cmd, env)
+    _write_cached_tools(entry.alias, tools)
+    return tools
+
+
 # --------------------------------------------------------------------------
 # High-level: alias dispatch
 # --------------------------------------------------------------------------
@@ -101,7 +146,7 @@ def _dispatch_alias(alias: str, rest: list[str]) -> int:
         return _show_alias_help(entry, mcp_cmd, env)
 
     if rest[0] == "--list-tools":
-        tools = _fetch_tools(mcp_cmd, env)
+        tools = _get_tools(entry, mcp_cmd, env, prefer_cache=True)
         print(json.dumps(
             [{"name": t.name, "description": t.description} for t in tools],
             ensure_ascii=False,
@@ -111,8 +156,11 @@ def _dispatch_alias(alias: str, rest: list[str]) -> int:
     tool_name = rest[0]
     tool_args = rest[1:]
 
-    tools = _fetch_tools(mcp_cmd, env)
+    tools = _get_tools(entry, mcp_cmd, env, prefer_cache=True)
     tool = next((t for t in tools if t.name == tool_name), None)
+    if tool is None:
+        tools = _get_tools(entry, mcp_cmd, env, prefer_cache=False, refresh=True)
+        tool = next((t for t in tools if t.name == tool_name), None)
     if tool is None:
         available = ", ".join(t.name for t in tools) or "(none)"
         print(
@@ -146,7 +194,7 @@ def _dispatch_alias(alias: str, rest: list[str]) -> int:
 
 def _show_alias_help(entry: RegistryEntry, mcp_cmd: list[str], env: dict[str, str]) -> int:
     try:
-        tools = _fetch_tools(mcp_cmd, env)
+        tools = _get_tools(entry, mcp_cmd, env, prefer_cache=True)
     except Exception as e:
         print(f"{entry.alias}: failed to list tools ({e})", file=sys.stderr)
         return 1
@@ -179,7 +227,13 @@ def _parser_for_tool(alias: str, tool: Tool) -> argparse.ArgumentParser:
         flag = "--" + pname
         is_req = pname in required
         if t == "boolean":
-            parser.add_argument(flag, action="store_true", help=desc or None)
+            parser.add_argument(
+                flag,
+                action=argparse.BooleanOptionalAction,
+                required=is_req,
+                default=pschema.get("default"),
+                help=desc or None,
+            )
         elif t == "integer":
             parser.add_argument(flag, type=int, required=is_req, help=desc or None,
                                 default=pschema.get("default"))
@@ -268,10 +322,7 @@ def _cmd_add(args: argparse.Namespace) -> int:
     # Persist alias
     config.upsert_alias(entry.to_dict())
     if tools:
-        config.write_cached_tools(alias, [
-            {"name": t.name, "description": t.description, "inputSchema": t.input_schema}
-            for t in tools
-        ])
+        _write_cached_tools(alias, tools)
 
     # Emit skill + AGENTS.md unless suppressed
     if not args.no_skill and tools:

@@ -84,7 +84,9 @@ def _render_subcommand(tool: Tool) -> str:
         kind = cfg["type"]
         if kind == "bool":
             lines.append(
-                f"    sp.add_argument({flag!r}, action='store_true', help={help_json})"
+                "    sp.add_argument("
+                f"{flag!r}, action=argparse.BooleanOptionalAction, required={is_required}, "
+                f"default={repr(pschema.get('default'))}, help={help_json})"
             )
         elif kind == "json":
             lines.append(

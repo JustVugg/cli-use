@@ -65,7 +65,7 @@ def agent_tool(func: Callable[..., Any] | None = None, *, name: str | None = Non
 def _py_type_to_argparse(annotation: Any) -> dict[str, Any]:
     """Map a Python annotation to argparse kwargs.
 
-    Supports: str, int, float, bool (as --flag), list[str]/list[int] (nargs="*").
+    Supports: str, int, float, bool (as --flag/--no-flag), list[str]/list[int] (nargs="*").
     Unknown types fall through as str with a JSON-decode hint.
     """
     if annotation is inspect.Parameter.empty or annotation is str:
@@ -75,7 +75,7 @@ def _py_type_to_argparse(annotation: Any) -> dict[str, Any]:
     if annotation is float:
         return {"type": float}
     if annotation is bool:
-        # handled specially at parser build time (store_true)
+        # handled specially at parser build time via BooleanOptionalAction
         return {"_bool": True}
     origin = get_origin(annotation)
     if origin is list:
@@ -119,7 +119,12 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
             kwargs = _py_type_to_argparse(param.annotation)
             required = param.default is inspect.Parameter.empty
             if kwargs.pop("_bool", False):
-                sp.add_argument(flag, action="store_true", default=bool(param.default) if not required else False)
+                sp.add_argument(
+                    flag,
+                    action=argparse.BooleanOptionalAction,
+                    required=required,
+                    default=None if required else param.default,
+                )
             else:
                 sp.add_argument(
                     flag,
