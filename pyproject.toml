@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cli-use"
+version = "0.0.1"
+description = "Create agent-friendly CLIs and convert MCP servers into CLIs. Cuts token cost for AI agents."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "cli-use contributors" }]
+keywords = ["mcp", "cli", "ai", "agents", "llm", "tools"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = []
+
+[project.scripts]
+cli-use = "cli_use.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/cli-use/cli-use"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cli_use"]
