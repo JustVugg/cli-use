@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Tiny stdio MCP server used in cli-use tests & demos.
 
-Exposes three tools:
+Exposes four tools:
 - greet(name, shout=False) → "hello <name>"
 - add(a, b) → a + b
 - search_notes(query, limit=5) → mock search results
+- feature_status(enabled=True) → "enabled" | "disabled"
 
 Implements just enough JSON-RPC 2.0 / MCP 2024-11-05 to be usable by any
 MCP-compliant client.
@@ -52,6 +53,16 @@ TOOLS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "feature_status",
+        "description": "Report whether the feature is enabled.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "enabled": {"type": "boolean", "default": True},
+            },
+        },
+    },
 ]
 
 
@@ -70,6 +81,8 @@ def _call(name: str, args: dict) -> dict:
         limit = int(args.get("limit", 5))
         hits = [f"note {i}: mentions '{q}'" for i in range(1, limit + 1)]
         return _text("\n".join(hits))
+    if name == "feature_status":
+        return _text("enabled" if args.get("enabled", True) else "disabled")
     return {"content": [{"type": "text", "text": f"unknown tool {name}"}], "isError": True}
 
 

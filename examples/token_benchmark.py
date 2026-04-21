@@ -22,13 +22,18 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from cli_use.mcp_client import MCPClient, extract_text_content
 
 
-ROOT = Path(__file__).resolve().parent.parent
-MOCK = ["python3", str(ROOT / "examples" / "mock_mcp_server.py")]
+MOCK = [sys.executable, str(ROOT / "examples" / "mock_mcp_server.py")]
+MOCK_CLI = Path(tempfile.gettempdir()) / "mock_cli.py"
 
 
 def tokens(s: str) -> int:
@@ -56,7 +61,7 @@ def bench_cliuse(tool: str, args: dict) -> tuple[int, int, str]:
     # simulate: agent reads `--help` once to learn the tool, then issues the
     # shell invocation. help_blob is the terse summary our generated CLI shows.
     help_proc = subprocess.run(
-        [sys.executable, "/tmp/mock_cli.py", "--help"],
+        [sys.executable, str(MOCK_CLI), "--help"],
         capture_output=True, text=True, check=True,
         env={**__import__("os").environ, "PYTHONPATH": str(ROOT)},
     )
@@ -65,7 +70,7 @@ def bench_cliuse(tool: str, args: dict) -> tuple[int, int, str]:
                          for k, v in args.items() if not (isinstance(v, bool) and not v))
     shell_cmd = f"./mock_cli {tool} {flag_args}"
     out_proc = subprocess.run(
-        [sys.executable, "/tmp/mock_cli.py", tool]
+        [sys.executable, str(MOCK_CLI), tool]
         + [arg for k, v in args.items()
            for arg in ([f"--{k}"] + ([] if isinstance(v, bool) else [str(v)]))
            if not (isinstance(v, bool) and not v)],
@@ -86,6 +91,13 @@ TASKS = [
 
 
 def main() -> None:
+    subprocess.run(
+        [sys.executable, "-m", "cli_use.cli", "convert", " ".join(MOCK), "--out", str(MOCK_CLI)],
+        capture_output=True,
+        check=True,
+        text=True,
+        env={**__import__("os").environ, "PYTHONPATH": str(ROOT)},
+    )
     print(f"{'task':<18}  {'mcp_in':>7} {'mcp_out':>8} {'mcp_tot':>8}  {'cli_in':>7} {'cli_out':>8} {'cli_tot':>8}  {'savings':>8}")
     print("-" * 92)
     tot_mcp = tot_cli = 0
@@ -112,7 +124,7 @@ def main() -> None:
             "name": t.name, "description": t.description, "inputSchema": t.input_schema,
         } for t in schemas])
     help_proc = subprocess.run(
-        [sys.executable, "/tmp/mock_cli.py", "--help"],
+        [sys.executable, str(MOCK_CLI), "--help"],
         capture_output=True, text=True, check=True,
         env={**__import__("os").environ, "PYTHONPATH": str(ROOT)},
     )
