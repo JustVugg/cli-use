@@ -1,6 +1,7 @@
 """Smoke tests — run with: PYTHONPATH=. python -m unittest tests/test_smoke.py"""
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -8,7 +9,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-MOCK = ["python3", str(ROOT / "examples" / "mock_mcp_server.py")]
+MOCK = [sys.executable, str(ROOT / "examples" / "mock_mcp_server.py")]
 ENV = {**os.environ, "PYTHONPATH": str(ROOT)}
 
 
@@ -27,6 +28,16 @@ class TestCreateFramework(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.strip(), "3.0")
 
+    def test_hello_cli_boolean_optional_action(self):
+        r = run([
+            sys.executable,
+            str(ROOT / "examples" / "hello_cli.py"),
+            "feature-status",
+            "--no-enabled",
+        ])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "disabled")
+
 
 class TestMCPClient(unittest.TestCase):
     def test_list_tools(self):
@@ -34,7 +45,7 @@ class TestMCPClient(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         tools = json.loads(r.stdout)
         names = {t["name"] for t in tools}
-        self.assertEqual(names, {"greet", "add", "search_notes"})
+        self.assertEqual(names, {"greet", "add", "search_notes", "feature_status"})
 
     def test_run_tool(self):
         r = run([
@@ -55,10 +66,13 @@ class TestConverter(unittest.TestCase):
             r2 = run([sys.executable, out, "add", "--a", "40", "--b", "2"])
             self.assertEqual(r2.returncode, 0, r2.stderr)
             self.assertEqual(r2.stdout.strip(), "42.0")
+            r_bool = run([sys.executable, out, "feature_status", "--no-enabled"])
+            self.assertEqual(r_bool.returncode, 0, r_bool.stderr)
+            self.assertEqual(r_bool.stdout.strip(), "disabled")
             r3 = run([sys.executable, out, "--list-tools"])
             self.assertEqual(r3.returncode, 0, r3.stderr)
             tools = json.loads(r3.stdout)
-            self.assertEqual(len(tools), 3)
+            self.assertEqual(len(tools), 4)
         finally:
             os.unlink(out)
 
@@ -90,7 +104,7 @@ class TestHighLevelUX(unittest.TestCase):
         return r
 
     def test_add_dispatch_and_skill(self):
-        mock_cmd = f"python3 {ROOT / 'examples' / 'mock_mcp_server.py'}"
+        mock_cmd = f"{shlex.quote(sys.executable)} {shlex.quote(str(ROOT / 'examples' / 'mock_mcp_server.py'))}"
         self._cli_use("add", "mock", "--from", f"local:{mock_cmd}",
                       "--description", "Local mock for tests")
 
@@ -105,6 +119,9 @@ class TestHighLevelUX(unittest.TestCase):
         r = self._cli_use("mock", "greet", "--name", "x")
         self.assertEqual(r.stdout.strip(), "hello x")
 
+        r = self._cli_use("mock", "feature_status", "--no-enabled")
+        self.assertEqual(r.stdout.strip(), "disabled")
+
         # compact help prints tool roster
         r = self._cli_use("mock")
         self.assertIn("greet", r.stdout)
@@ -117,7 +134,7 @@ class TestHighLevelUX(unittest.TestCase):
         self.assertIn("<!-- cli-use:mock:start -->", agents)
 
     def test_remove_alias(self):
-        mock_cmd = f"python3 {ROOT / 'examples' / 'mock_mcp_server.py'}"
+        mock_cmd = f"{shlex.quote(sys.executable)} {shlex.quote(str(ROOT / 'examples' / 'mock_mcp_server.py'))}"
         self._cli_use("add", "tmpmock", "--from", f"local:{mock_cmd}")
         self._cli_use("remove", "tmpmock")
         r = self._cli_use("list")
