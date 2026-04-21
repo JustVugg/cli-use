@@ -5,7 +5,9 @@
 **Turn any MCP server into a CLI in one command.** Cut the token cost of AI agents by 60–80%, every call, forever.
 
 ```bash
-pip install e.
+git clone https://github.com/cli-use/cli-use.git
+cd cli-use
+pip install -e .
 cli-use add fs /tmp                # install + register + emit SKILL.md
 cli-use fs list_directory --path /tmp
 ```
@@ -115,6 +117,8 @@ hello world
 
 `emit_skill=True` drops a `skills/hello/SKILL.md` + AGENTS.md entry alongside the script, so your custom CLI is also self-documenting to agents.
 
+Boolean flags support both forms: `--flag` and `--no-flag`.
+
 ## Why it works (the protocol one-liner)
 
 | Protocol | Universal shell client |
@@ -126,11 +130,12 @@ hello world
 
 ## Design principles
 
-- **Zero runtime deps.** Pure Python stdlib. `pip install cli-use` and you're done.
+- **Zero runtime deps.** Pure Python stdlib once installed from the repo.
 - **Terse `--help` by design.** An agent learns a 14-tool CLI in ~400 tokens instead of ~2000.
 - **Plain-text stdout.** Pipes to `jq`, `grep`, `awk`, `xargs` without ceremony.
 - **Persistent aliases.** Install once, every project in your shell inherits it.
 - **Skills by default.** Agents pick up the CLI from SKILL.md/AGENTS.md with no hand-holding.
+- **Smoke-tested on Linux, macOS, and Windows.**
 
 ## Low-level commands (for power users)
 
