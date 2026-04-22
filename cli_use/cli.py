@@ -32,6 +32,7 @@ from cli_use.registry import (
     parse_source_spec,
 )
 from cli_use.skill import ToolSpec, emit_skill, update_agents_md
+from cli_use import daemon
 
 
 META_SUBCOMMANDS = {"add", "remove", "list", "search", "convert", "run", "mcp-list", "help", "--help", "-h"}
@@ -177,12 +178,17 @@ def _dispatch_alias(alias: str, rest: list[str]) -> int:
     ns = parser.parse_args(tool_args)
     arguments = {k: v for k, v in vars(ns).items() if v is not None}
 
-    with MCPClient(mcp_cmd, env=env) as client:
-        try:
-            result = client.call_tool(tool_name, arguments)
-        except Exception as e:
-            print(f"error: {e}", file=sys.stderr)
-            return 1
+    if daemon.is_running(alias):
+        result = daemon.call_tool(alias, tool_name, arguments)
+    else:
+        with MCPClient(mcp_cmd, env=env) as client:
+            try:
+                result = client.call_tool(tool_name, arguments)
+            except Exception as e:
+                print(f"error: {e}", file=sys.stderr)
+                return 1
+
+    # Processa risultato (condiviso)
     if result.get("isError"):
         print(extract_text_content(result), file=sys.stderr)
         return 1
@@ -519,6 +525,20 @@ def _build_subparser(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--env", action="append", default=[])
     p.set_defaults(func=_cmd_mcp_list)
 
+    p = sub.add_parser("daemon", help="Manage background MCP daemons.")
+    dsub = p.add_subparsers(dest="daemon_cmd", metavar="DAEMON_CMD")
+
+    dp = dsub.add_parser("start", help="Start a daemon for an alias.")
+    dp.add_argument("alias")
+    dp.set_defaults(func=lambda a: (_daemon_start(a), 0)[1])
+
+    dp = dsub.add_parser("stop", help="Stop a daemon for an alias.")
+    dp.add_argument("alias")
+    dp.set_defaults(func=lambda a: (_daemon_stop(a), 0)[1])
+
+    dp = dsub.add_parser("list", help="List running daemons.")
+    dp.set_defaults(func=_cmd_daemon_list)
+
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -550,6 +570,22 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     return args.func(args)
 
+def _daemon_start(args: argparse.Namespace) -> None:
+    daemon.start(args.alias)
+
+
+def _daemon_stop(args: argparse.Namespace) -> None:
+    daemon.stop(args.alias)
+
+
+def _cmd_daemon_list(args: argparse.Namespace) -> int:
+    running = daemon.list_running()
+    if not running:
+        print("(no daemons running)")
+        return 0
+    for alias, port in running:
+        print(f"  {alias:<15}  127.0.0.1:{port}")
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())
