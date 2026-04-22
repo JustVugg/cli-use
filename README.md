@@ -190,7 +190,7 @@ cli-use mcp-list "python mock_mcp.py" --format json
 
 - [x] **v0.1** — one-shot CLI, built-in registry, SKILL.md / AGENTS.md emission.
 - [x] **v0.2** — daemon mode (keep MCP hot, <10 ms per call).
-- [ ] **v0.3** — MCP-proxy mode (cli-use as a drop-in MCP server for Claude Desktop/Cursor), multi-modal output passthrough, call caching, Langfuse/OTel export.
+- [ ] v0.3 — Call caching, batch/pipe mode across aliases, OpenAPI export, shell autocomplete.
 
 ## Status
 
