@@ -59,6 +59,44 @@ $ cli-use fs read_text_file --path /tmp/notes.md | grep TODO
 
 Every `add` also drops a [Vercel-format SKILL.md](https://vercel.com/docs/agent-resources/skills) in `skills/<alias>/` and a pointer in `AGENTS.md`, so any agent working in that repo learns the CLI automatically — zero human prompting required.
 
+## Daemon mode (optional)
+
+For interactive workflows, keep an MCP server hot in the background instead of paying the process-spawn tax on every call.
+
+| Mode | Latency per call |
+|------|------------------|
+| One-shot (default) | ~300–500 ms |
+| Daemon | < 10 ms |
+
+Start a daemon for any alias:
+
+```bash
+$ cli-use daemon start fs
+Daemon for fs started on 127.0.0.1:49231.
+```
+
+From now on, every `cli-use fs ...` call reuses the same stdio connection automatically — no flags needed, no JSON-RPC re-handshake.
+
+```bash
+$ cli-use fs list_directory --path /tmp
+notes.md
+report.pdf
+
+$ cli-use fs read_text_file --path /tmp/notes.md
+# instant, no process spawn
+```
+
+Manage background processes:
+
+```bash
+$ cli-use daemon list
+  fs              127.0.0.1:49231
+
+$ cli-use daemon stop fs
+```
+
+If the daemon is not running, commands fall back to the default one-shot behavior. The daemon is pure stdlib Python and talks HTTP over localhost — zero extra dependencies.
+
 ## Built-in registry
 
 10 MCP servers are pre-wired — see them with `cli-use list`:
@@ -148,7 +186,11 @@ cli-use mcp-list "python mock_mcp.py" --format json
 
 ## Roadmap
 
-- **v0.2** — daemon mode (keep MCP hot, <10 ms per call), MCP-proxy mode (cli-use as a drop-in MCP server for Claude Desktop/Cursor), multi-modal output passthrough, schema-backed validation, call caching, Langfuse/OTel export.
+## Roadmap
+
+- [x] **v0.1** — one-shot CLI, built-in registry, SKILL.md / AGENTS.md emission.
+- [x] **v0.2** — daemon mode (keep MCP hot, <10 ms per call).
+- [ ] **v0.3** — MCP-proxy mode (cli-use as a drop-in MCP server for Claude Desktop/Cursor), multi-modal output passthrough, call caching, Langfuse/OTel export.
 
 ## Status
 
