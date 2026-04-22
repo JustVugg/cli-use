@@ -118,8 +118,12 @@ class Source:
     def is_installed(self) -> bool:
         if self.type == "local":
             return True
-        if self.binary:
-            return shutil.which(self.binary) is not None
+        if self.binary and shutil.which(self.binary) is not None:
+            return True
+        # npm packages may be globally installed but the .cmd wrapper is not
+        # visible to shutil.which on Windows. If npx is available, we can run.
+        if self.type == "npm" and shutil.which("npx") is not None:
+            return True
         return False
 
     def install(self) -> None:
@@ -141,7 +145,20 @@ class Source:
             return shlex.split(self.command) + extra_args
         if not self.binary:
             raise RuntimeError(f"source of type {self.type} has no binary set")
-        # Windows: risolve .cmd installati da npm
+        
+        # npm packages on Windows install .cmd wrappers that are often not
+        # visible to subprocess.run() even when they are on the user PATH.
+        # Using npx avoids the issue entirely and works cross-platform.
+        if self.type == "npm":
+            # Unix/macOS/Windows: use direct binary if available
+            binary_path = shutil.which(self.binary)
+            if binary_path:
+                return [binary_path] + extra_args
+            # Windows fallback: npx finds the package even when the .cmd
+            # wrapper directory is not in the PATH visible to subprocess.run()
+            npx = shutil.which("npx") or "npx"
+            return [npx, "-y", self.package] + extra_args
+        
         binary = shutil.which(self.binary) or self.binary
         return [binary] + extra_args
 
