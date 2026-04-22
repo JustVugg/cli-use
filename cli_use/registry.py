@@ -141,12 +141,20 @@ class Source:
             return shlex.split(self.command) + extra_args
         if not self.binary:
             raise RuntimeError(f"source of type {self.type} has no binary set")
-        return [self.binary] + extra_args
+        # Windows: risolve .cmd installati da npm
+        binary = shutil.which(self.binary) or self.binary
+        return [binary] + extra_args
 
 
 def _run(cmd: list[str]) -> None:
     print(f"cli-use: running {' '.join(cmd)}", file=sys.stderr)
-    subprocess.run(cmd, check=True)
+    # Windows: subprocess non trova .cmd senza path assoluto
+    resolved = list(cmd)
+    if resolved:
+        found = shutil.which(resolved[0])
+        if found:
+            resolved[0] = found
+    subprocess.run(resolved, check=True)
 
 
 @dataclass
