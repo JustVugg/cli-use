@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cli-use"
-version = "0.0.1"
+version = "0.3.0"
 description = "Create agent-friendly CLIs and convert MCP servers into CLIs. Cuts token cost for AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
