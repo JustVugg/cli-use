@@ -175,6 +175,52 @@ Boolean flags support both forms: `--flag` and `--no-flag`.
 - **Skills by default.** Agents pick up the CLI from SKILL.md/AGENTS.md with no hand-holding.
 - **Smoke-tested on Linux, macOS, and Windows.**
 
+## v0.3 features
+
+### Call caching
+Repeated identical calls are served from disk (TTL 5 min), bypassing even the daemon:
+
+```bash
+# First call — goes to MCP server
+cli-use fs list_directory --path /tmp
+
+# Second call — instant, from disk cache
+cli-use fs list_directory --path /tmp
+```
+
+Cache stored in `~/.cli-use/cache/`. Zero config.
+
+### Batch / pipe mode
+Run a JSON pipeline across multiple aliases, with `{{out:N}}` substitution between steps:
+
+```bash
+$ cat ops.json
+[
+  {"alias": "fs", "tool": "read_file", "arguments": {"path": "report.md"}},
+  {"alias": "gh", "tool": "create_issue", "arguments": {"title": "Bug", "body": "{{out:0}}"}}
+]
+$ cli-use batch ops.json
+$ cli-use batch ops.json --format json   # structured output
+$ cli-use batch ops.json --continue-on-error
+```
+
+### OpenAPI export
+Generate an OpenAPI 3.0 spec from any cached alias:
+
+```bash
+$ cli-use openapi fs
+$ cli-use openapi fs gh --out api_spec.json
+```
+
+### Shell completions
+Generate bash completion scripts dynamically from cached tool schemas:
+
+```bash
+$ source <(cli-use completions --shell bash)
+$ cli-use fs <TAB>        # autocompletes tool names
+$ cli-use fs read_file <TAB>   # autocompletes --flags
+```
+
 ## Low-level commands (for power users)
 
 ```bash
@@ -186,11 +232,10 @@ cli-use mcp-list "python mock_mcp.py" --format json
 
 ## Roadmap
 
-## Roadmap
-
 - [x] **v0.1** — one-shot CLI, built-in registry, SKILL.md / AGENTS.md emission.
 - [x] **v0.2** — daemon mode (keep MCP hot, <10 ms per call).
-- [ ] v0.3 — Call caching, batch/pipe mode across aliases, OpenAPI export, shell autocomplete.
+- [x] v0.3 — Call caching, batch/pipe mode across aliases, OpenAPI export, shell autocomplete.
+- [ ] v0.4 — coming soon.
 
 ## Status
 
