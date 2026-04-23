@@ -174,8 +174,26 @@ class MCPClient:
 
 
 def parse_command(cmd: str | list[str]) -> list[str]:
+    """Parse a shell-like command string into argv.
+
+    On Windows shlex.split() in POSIX mode destroys backslashes in paths,
+    so we use posix=False and strip surrounding quotes manually.
+    """
     if isinstance(cmd, list):
         return cmd
+
+    if not isinstance(cmd, str) or not cmd.strip():
+        raise ValueError("empty command")
+
+    if os.name == "nt":
+        parts = shlex.split(cmd, posix=False)
+        cleaned = []
+        for p in parts:
+            if len(p) >= 2 and p[0] == p[-1] and p[0] in {"'", '"'}:
+                p = p[1:-1]
+            cleaned.append(p)
+        return cleaned
+
     return shlex.split(cmd)
 
 

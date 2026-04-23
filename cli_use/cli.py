@@ -129,11 +129,14 @@ def _call_alias_raw(alias: str, tool_name: str, arguments: dict) -> dict:
         raise RuntimeError(f"{alias!r} is not installed")
     mcp_cmd = entry.source.run_argv(entry.args)
     env = _collect_env(entry)
-    try:
-        result = _call_alias_raw(alias, tool_name, arguments)
-    except Exception as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
+    
+    if daemon.is_running(alias):
+        result = daemon.call_tool(alias, tool_name, arguments)
+    else:
+        with MCPClient(mcp_cmd, env=env) as client:
+            result = client.call_tool(tool_name, arguments)
+    
+    return result
 
 
 def _dispatch_alias(alias: str, rest: list[str]) -> int:
@@ -391,7 +394,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
     width = max(len(a) for a in registry) if registry else 4
     for alias in sorted(registry):
         e = registry[alias]
-        marker = "✓" if e.source.is_installed() else " "
+        marker = "+" if e.source.is_installed() else " "
         first = (e.description or "").strip().split("\n", 1)[0]
         if len(first) > 60:
             first = first[:59] + "…"

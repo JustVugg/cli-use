@@ -19,8 +19,8 @@ from typing import Any
 from cli_use.mcp_client import MCPClient, Tool, parse_command
 
 
-_FILE_HEADER = '''#!/usr/bin/env python3
-"""Auto-generated CLI from an MCP server by cli-use.
+_FILE_HEADER = r'''#!/usr/bin/env python3
+r"""Auto-generated CLI from an MCP server by cli-use.
 
 Command wrapped: {command_repr}
 """

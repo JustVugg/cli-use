@@ -17,7 +17,8 @@ def _resolve_args(arguments: dict[str, Any], outputs: list[str]) -> dict[str, An
         if isinstance(v, str):
             for m in _OUT_RE.finditer(v):
                 idx = int(m.group(1))
-                v = v.replace(m.group(0), outputs[idx])
+                if idx < len(outputs):
+                    v = v.replace(m.group(0), outputs[idx])
             return v
         if isinstance(v, dict):
             return {k: repl(x) for k, x in v.items()}
@@ -51,19 +52,34 @@ def run(spec_path: str | None, *, continue_on_error: bool = False, format: str =
             results.append({"error": str(e)})
             continue
 
-        text = extract_text_content(result) if not result.get("isError") else ""
+        # Gestisci result None
+        if result is None:
+            msg = f"batch [{i}] {alias}/{tool}: tool returned None"
+            print(msg, file=sys.stderr)
+            if not continue_on_error:
+                return 1
+            outputs.append("")
+            results.append({"error": "tool returned None"})
+            continue
+
+        # Gestisci errore dal tool
         if result.get("isError"):
+            text = extract_text_content(result) or ""
             print(f"batch [{i}] {alias}/{tool}: {text}", file=sys.stderr)
             if not continue_on_error:
                 return 1
+            outputs.append("")
+            results.append({"alias": alias, "tool": tool, "output": "", "raw": result})
+            continue
 
+        # Successo
+        text = extract_text_content(result) or ""
         outputs.append(text)
         results.append({"alias": alias, "tool": tool, "output": text, "raw": result})
 
     if format == "json":
         print(json.dumps(results, indent=2, ensure_ascii=False))
     else:
-        # text mode: print last non-empty output by default, or all with separators
         for r in results:
             if r.get("output"):
                 print(r["output"])

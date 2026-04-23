@@ -21,7 +21,7 @@ def get(alias: str, tool: str, arguments: dict, ttl: int = 300) -> dict | None:
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if time.time() - data["timestamp"] > ttl:
+        if ttl == 0 or time.time() - data["timestamp"] >= ttl:
             path.unlink(missing_ok=True)
             return None
         return data["result"]
