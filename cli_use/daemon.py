@@ -14,6 +14,7 @@ from typing import Any
 from cli_use import config
 from cli_use.mcp_client import MCPClient, extract_text_content
 from cli_use.registry import RegistryEntry, merged_registry
+from cli_use import cache
 
 
 DAEMON_DIR = Path.home() / ".cli-use" / "daemons"
@@ -158,8 +159,14 @@ def _daemon_call_tool(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
     global _daemon_client
     if _daemon_client is None:
         raise RuntimeError("MCP client not initialized")
+
+    # Cache lookup — se c'è un risultato fresco, lo restituiamo subito
+    cached = cache.get(_daemon_alias, tool, arguments, ttl=300)
+    if cached is not None:
+        return cached
+
     try:
-        return _daemon_client.call_tool(tool, arguments)
+        result = _daemon_client.call_tool(tool, arguments)
     except Exception:
         # Tenta reconnect una volta
         _daemon_client.__exit__(None, None, None)
@@ -168,7 +175,11 @@ def _daemon_call_tool(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         env = _env_for(entry) if entry else {}
         _daemon_client = MCPClient(cmd, env=env)
         _daemon_client.__enter__()
-        return _daemon_client.call_tool(tool, arguments)
+        result = _daemon_client.call_tool(tool, arguments)
+
+    # Salva in cache prima di restituire
+    cache.set(_daemon_alias, tool, arguments, result)
+    return result
 
 
 _daemon_alias: str = ""

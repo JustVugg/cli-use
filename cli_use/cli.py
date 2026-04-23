@@ -35,8 +35,7 @@ from cli_use.skill import ToolSpec, emit_skill, update_agents_md
 from cli_use import daemon
 
 
-META_SUBCOMMANDS = {"add", "remove", "list", "search", "convert", "run", "mcp-list", "help", "--help", "-h"}
-
+META_SUBCOMMANDS = {"add", "remove", "list", "search", "convert", "run", "mcp-list", "help", "--help", "-h", "batch", "openapi", "completions"}
 
 def _parse_env_flags(pairs: list[str] | None) -> dict[str, str]:
     env: dict[str, str] = {}
@@ -120,6 +119,21 @@ def _get_tools(
 # --------------------------------------------------------------------------
 # High-level: alias dispatch
 # --------------------------------------------------------------------------
+
+def _call_alias_raw(alias: str, tool_name: str, arguments: dict) -> dict:
+    """Chiamata grezza riusabile da batch.py e _dispatch_alias."""
+    entry = _resolve_alias(alias)
+    if entry is None:
+        raise ValueError(f"unknown alias {alias!r}")
+    if not entry.source.is_installed():
+        raise RuntimeError(f"{alias!r} is not installed")
+    mcp_cmd = entry.source.run_argv(entry.args)
+    env = _collect_env(entry)
+    try:
+        result = _call_alias_raw(alias, tool_name, arguments)
+    except Exception as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
 
 
 def _dispatch_alias(alias: str, rest: list[str]) -> int:
@@ -525,6 +539,24 @@ def _build_subparser(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--env", action="append", default=[])
     p.set_defaults(func=_cmd_mcp_list)
 
+    # batch
+    p = sub.add_parser("batch", help="Run multiple tool calls from a JSON spec.")
+    p.add_argument("file", nargs="?", default="-", help="JSON spec file (default: stdin)")
+    p.add_argument("--continue-on-error", action="store_true")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=lambda a: _cmd_batch(a))
+
+    # openapi
+    p = sub.add_parser("openapi", help="Export OpenAPI 3.0 spec per alias.")
+    p.add_argument("aliases", nargs="*", help="Alias da esportare (default: tutti)")
+    p.add_argument("--out", default=None)
+    p.set_defaults(func=lambda a: _cmd_openapi(a))
+
+    # completions
+    p = sub.add_parser("completions", help="Emetti script di completamento shell.")
+    p.add_argument("--shell", choices=["bash", "zsh"], required=True)
+    p.set_defaults(func=lambda a: _cmd_completions(a))
+
     p = sub.add_parser("daemon", help="Manage background MCP daemons.")
     dsub = p.add_subparsers(dest="daemon_cmd", metavar="DAEMON_CMD")
 
@@ -569,6 +601,36 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help(sys.stderr)
         return 2
     return args.func(args)
+
+def _cmd_batch(args: argparse.Namespace) -> int:
+    from cli_use import batch
+    return batch.run(
+        args.file,
+        continue_on_error=args.continue_on_error,
+        format=args.format,
+    )
+
+
+def _cmd_openapi(args: argparse.Namespace) -> int:
+    from cli_use import openapi
+    spec = openapi.build_spec(args.aliases or None)
+    out = json.dumps(spec, indent=2, ensure_ascii=False)
+    if args.out:
+        Path(args.out).write_text(out, encoding="utf-8")
+        print(f"OpenAPI spec scritto in {args.out}")
+    else:
+        print(out)
+    return 0
+
+
+def _cmd_completions(args: argparse.Namespace) -> int:
+    from cli_use import completions
+    if args.shell == "bash":
+        print(completions.bash())
+    else:
+        print("# zsh support coming soon", file=sys.stderr)
+    return 0
+
 
 def _daemon_start(args: argparse.Namespace) -> None:
     daemon.start(args.alias)
