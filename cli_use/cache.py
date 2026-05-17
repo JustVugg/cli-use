@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import time
 from pathlib import Path
 
-_DIR = Path.home() / ".cli-use" / "cache"
-_DIR.mkdir(parents=True, exist_ok=True)
+from cli_use import config
 
 
 def _key(alias: str, tool: str, arguments: dict) -> str:
@@ -15,8 +16,24 @@ def _key(alias: str, tool: str, arguments: dict) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def _dir() -> Path:
+    try:
+        return config.cache_dir()
+    except OSError:
+        fallback = Path(tempfile.gettempdir()) / f"cli-use-cache-{_user_id()}"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def _user_id() -> str:
+    getuid = getattr(os, "getuid", None)
+    if getuid is None:
+        return os.environ.get("USERNAME") or os.environ.get("USER") or "user"
+    return str(getuid())
+
+
 def get(alias: str, tool: str, arguments: dict, ttl: int = 300) -> dict | None:
-    path = _DIR / f"{_key(alias, tool, arguments)}.json"
+    path = _dir() / f"{_key(alias, tool, arguments)}.json"
     if not path.exists():
         return None
     try:
@@ -30,5 +47,5 @@ def get(alias: str, tool: str, arguments: dict, ttl: int = 300) -> dict | None:
 
 
 def set(alias: str, tool: str, arguments: dict, result: dict) -> None:
-    path = _DIR / f"{_key(alias, tool, arguments)}.json"
+    path = _dir() / f"{_key(alias, tool, arguments)}.json"
     path.write_text(json.dumps({"timestamp": time.time(), "result": result}), encoding="utf-8")

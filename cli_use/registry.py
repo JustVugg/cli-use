@@ -101,7 +101,7 @@ BUILTIN: list[dict[str, Any]] = [
 @dataclass
 class Source:
     """How to install and run an MCP server."""
-    type: str                      # "npm" | "pip" | "local" | "git"
+    type: str                      # "npm" | "pip" | "local" | "git" | "glama"
     package: str = ""              # for npm/pip
     binary: str = ""               # for npm/pip, expected on PATH after install
     command: str = ""              # for local: literal shell command
@@ -118,6 +118,8 @@ class Source:
     def is_installed(self) -> bool:
         if self.type == "local":
             return True
+        if self.type == "glama":
+            return False
         if self.binary and shutil.which(self.binary) is not None:
             return True
         # npm packages may be globally installed but the .cmd wrapper is not
@@ -136,6 +138,8 @@ class Source:
                 _run([sys.executable, "-m", "pip", "install", "--user", self.package])
         elif self.type == "local":
             return
+        elif self.type == "glama":
+            raise RuntimeError("glama sources must be resolved before install")
         else:
             raise RuntimeError(f"install not implemented for source type {self.type!r}")
 
@@ -143,6 +147,8 @@ class Source:
         """Return the argv to spawn this MCP server."""
         if self.type == "local":
             return shlex.split(self.command) + extra_args
+        if self.type == "glama":
+            raise RuntimeError("glama sources must be resolved before run")
         if not self.binary:
             raise RuntimeError(f"source of type {self.type} has no binary set")
         
@@ -247,4 +253,6 @@ def parse_source_spec(spec: str) -> Source:
         return Source(type="local", command=value)
     if type_ == "git":
         return Source(type="git", url=value)
+    if type_ == "glama":
+        return Source(type="glama", url=value)
     raise ValueError(f"unknown source type {type_!r}")

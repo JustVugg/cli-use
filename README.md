@@ -97,6 +97,25 @@ $ cli-use daemon stop fs
 
 If the daemon is not running, commands fall back to the default one-shot behavior. The daemon is pure stdlib Python and talks HTTP over localhost — zero extra dependencies.
 
+## Interactive TUI
+
+Prefer a guided terminal workflow? Open the built-in TUI:
+
+```bash
+$ cli-use tui
+$ cli-use tui fs
+```
+
+From the TUI you can browse aliases, inspect cached tool schemas, install custom MCP servers, start/stop daemons, and run tools by filling prompts generated from each MCP input schema. Press `h`, `help`, or `?` inside the TUI for the command guide.
+When Python has `readline` available, the TUI enables Tab completion for aliases, tools, daemon actions, source prefixes, and cached Glama refs.
+
+For CI or documentation snapshots:
+
+```bash
+$ cli-use tui --snapshot
+$ cli-use tui fs --snapshot
+```
+
 ## Built-in registry
 
 10 MCP servers are pre-wired — see them with `cli-use list`:
@@ -120,6 +139,36 @@ Install sources: `npm`, `pip`, `pipx`, `local` commands. Add your own in one lin
 cli-use add my-server --from "npm:@acme/my-mcp-server"
 cli-use add weather   --from "pip:weather-mcp-server"
 cli-use add dev-tools --from "local:python /opt/mcp/server.py"
+cli-use add docs      --from "glama:modelcontextprotocol/fetch"
+```
+
+## Discover MCP servers
+
+Search Glama's MCP catalog from the CLI:
+
+```bash
+cli-use discover filesystem
+cli-use discover --category database
+cli-use discover --attribute hosting:local-only
+cli-use discover --details modelcontextprotocol/filesystem
+```
+
+Install directly when Glama exposes a usable MCP config:
+
+```bash
+cli-use discover --install modelcontextprotocol/filesystem --alias fs2 --server-args /tmp
+```
+
+If a catalog entry does not expose an installable command, provide the source explicitly:
+
+```bash
+cli-use discover --install vendor/server --from "npm:@vendor/mcp-server"
+```
+
+Shell completions include `discover`, `tui`, discover options, and cached Glama refs after a search:
+
+```bash
+source <(cli-use completions --shell bash)
 ```
 
 ## Two flavors

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 
@@ -17,7 +18,20 @@ def config_dir() -> Path:
     override = os.environ.get("CLI_USE_HOME")
     if override:
         return Path(override)
-    return Path.home() / ".cli-use"
+    default = Path.home() / ".cli-use"
+    if default.exists():
+        if os.access(default, os.W_OK | os.X_OK):
+            return default
+    elif os.access(default.parent, os.W_OK | os.X_OK):
+        return default
+    return Path(tempfile.gettempdir()) / f"cli-use-{_user_id()}"
+
+
+def _user_id() -> str:
+    getuid = getattr(os, "getuid", None)
+    if getuid is None:
+        return os.environ.get("USERNAME") or os.environ.get("USER") or "user"
+    return str(getuid())
 
 
 def ensure_dir() -> Path:

@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import sys
 from pathlib import Path
 
@@ -35,7 +36,7 @@ from cli_use.skill import ToolSpec, emit_skill, update_agents_md
 from cli_use import daemon
 
 
-META_SUBCOMMANDS = {"add", "remove", "list", "search", "convert", "run", "mcp-list", "help", "--help", "-h", "batch", "openapi", "completions"}
+META_SUBCOMMANDS = {"add", "remove", "list", "search", "discover", "convert", "run", "mcp-list", "help", "--help", "-h", "batch", "openapi", "completions", "tui"}
 
 def _parse_env_flags(pairs: list[str] | None) -> dict[str, str]:
     env: dict[str, str] = {}
@@ -310,6 +311,22 @@ def _cmd_add(args: argparse.Namespace) -> int:
             args=list(args.args or []),
             env={},
         )
+        if entry.source.type == "glama":
+            from cli_use import discovery
+            try:
+                entry = discovery.entry_from_ref(
+                    entry.source.url,
+                    alias=alias,
+                    server_args=list(args.args or []) or None,
+                    source_override=None,
+                )
+                if args.name:
+                    entry.name = args.name
+                if args.description:
+                    entry.description = args.description
+            except Exception as e:
+                print(f"cli-use: Glama source resolution failed for {alias}: {e}", file=sys.stderr)
+                return 1
     elif entry is None:
         print(
             f"cli-use: {alias!r} is not in the built-in registry. Provide --from <type:value>.",
@@ -325,6 +342,30 @@ def _cmd_add(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+
+    return _install_entry(
+        entry,
+        no_skill=args.no_skill,
+        skills_dir=args.skills_dir,
+        agents_file=args.agents_file,
+    )
+
+
+def _install_entry(
+    entry: RegistryEntry,
+    *,
+    no_skill: bool = False,
+    skills_dir: str | Path = "skills",
+    agents_file: str | Path = "AGENTS.md",
+) -> int:
+    alias = entry.alias
+    if entry.needs_args and not entry.args:
+        print(
+            f"cli-use: {alias!r} needs server args ({entry.args_hint or '<args>'}). "
+            f"Pass them with `--server-args` for discover or after the alias for add.",
+            file=sys.stderr,
+        )
+        return 1
 
     # Install if not present
     if not entry.source.is_installed():
@@ -348,13 +389,13 @@ def _cmd_add(args: argparse.Namespace) -> int:
         _write_cached_tools(alias, tools)
 
     # Emit skill + AGENTS.md unless suppressed
-    if not args.no_skill and tools:
+    if not no_skill and tools:
         tool_specs = [ToolSpec(name=t.name, description=t.description, input_schema=t.input_schema) for t in tools]
         skill_dir = emit_skill(
             alias=alias,
             description=entry.description,
             tools=tool_specs,
-            skills_root=args.skills_dir,
+            skills_root=skills_dir,
             binary=f"cli-use {alias}",
         )
         update_agents_md(
@@ -362,7 +403,7 @@ def _cmd_add(args: argparse.Namespace) -> int:
             description=entry.description,
             tools=tool_specs,
             binary=f"cli-use {alias}",
-            agents_path=args.agents_file,
+            agents_path=agents_file,
         )
         print(f"cli-use: emitted skill → {skill_dir}", file=sys.stderr)
 
@@ -415,6 +456,56 @@ def _cmd_search(args: argparse.Namespace) -> int:
     for e in hits:
         first = (e.description or "").strip().split("\n", 1)[0]
         print(f"  {e.alias}  —  {first}")
+    return 0
+
+
+def _cmd_discover(args: argparse.Namespace) -> int:
+    from cli_use import discovery
+
+    if args.complete is not None:
+        for item in discovery.complete(args.complete):
+            print(item)
+        return 0
+
+    if args.provider != "glama":
+        print(f"cli-use: unknown discovery provider {args.provider!r}", file=sys.stderr)
+        return 2
+
+    client = discovery.GlamaClient()
+    try:
+        if args.install:
+            server_args = shlex.split(args.server_args) if args.server_args else None
+            entry = discovery.entry_from_ref(
+                args.install,
+                alias=args.alias,
+                server_args=server_args,
+                source_override=args.source,
+                client=client,
+            )
+            return _install_entry(
+                entry,
+                no_skill=args.no_skill,
+                skills_dir=args.skills_dir,
+                agents_file=args.agents_file,
+            )
+
+        if args.details:
+            server = client.get_server(args.details)
+            print(discovery.format_details(server, format=args.format))
+            return 0
+
+        query_parts = [args.query_arg or "", args.query or "", args.category or ""]
+        query = " ".join(part for part in query_parts if part).strip()
+        servers = client.search(
+            query,
+            attributes=args.attribute or None,
+            first=args.limit,
+        )
+    except Exception as e:
+        print(f"cli-use: discover failed: {e}", file=sys.stderr)
+        return 1
+
+    print(discovery.format_search_results(servers, format=args.format))
     return 0
 
 
@@ -518,6 +609,25 @@ def _build_subparser(parser: argparse.ArgumentParser) -> None:
     p.add_argument("query")
     p.set_defaults(func=_cmd_search)
 
+    p = sub.add_parser("discover", help="Search MCP servers from discovery providers.")
+    p.add_argument("query_arg", nargs="?", help="Search text.")
+    p.add_argument("--query", default="", help="Search text.")
+    p.add_argument("--provider", choices=["glama"], default="glama")
+    p.add_argument("--attribute", action="append", default=[], help="Glama attribute lookup key, e.g. hosting:local-only.")
+    p.add_argument("--category", default="", help="Extra search term for broad categories such as database.")
+    p.add_argument("--limit", type=int, default=10)
+    p.add_argument("--format", choices=["table", "json"], default="table")
+    p.add_argument("--details", default=None, metavar="REF", help="Show details for namespace/slug.")
+    p.add_argument("--install", default=None, metavar="REF", help="Install namespace/slug from Glama.")
+    p.add_argument("--alias", default=None, help="Alias for --install.")
+    p.add_argument("--from", dest="source", default=None, help="Override install source: npm:<pkg>, pip:<pkg>, local:'<command>'.")
+    p.add_argument("--server-args", default="", help="Runtime args for the MCP server when installing.")
+    p.add_argument("--no-skill", action="store_true", help="Do not emit SKILL.md / AGENTS.md on install.")
+    p.add_argument("--skills-dir", default="skills", help="Where to write skills (default: ./skills)")
+    p.add_argument("--agents-file", default="AGENTS.md", help="Path to AGENTS.md (default: ./AGENTS.md)")
+    p.add_argument("--complete", default=None, help=argparse.SUPPRESS)
+    p.set_defaults(func=_cmd_discover)
+
     p = sub.add_parser("convert", help="[low-level] Generate a CLI from an MCP command.")
     p.add_argument("mcp_command")
     p.add_argument("--out", required=True)
@@ -559,6 +669,13 @@ def _build_subparser(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("completions", help="Emetti script di completamento shell.")
     p.add_argument("--shell", choices=["bash", "zsh"], required=True)
     p.set_defaults(func=lambda a: _cmd_completions(a))
+
+    p = sub.add_parser("tui", help="Open the interactive terminal UI.")
+    p.add_argument("alias", nargs="?", help="Alias to open first.")
+    p.add_argument("--no-clear", action="store_true", help="Do not clear the terminal between screens.")
+    p.add_argument("--refresh", action="store_true", help="Refresh tool schemas instead of using cache.")
+    p.add_argument("--snapshot", action="store_true", help="Print one TUI screen and exit.")
+    p.set_defaults(func=lambda a: _cmd_tui(a))
 
     p = sub.add_parser("daemon", help="Manage background MCP daemons.")
     dsub = p.add_subparsers(dest="daemon_cmd", metavar="DAEMON_CMD")
@@ -633,6 +750,18 @@ def _cmd_completions(args: argparse.Namespace) -> int:
     else:
         print("# zsh support coming soon", file=sys.stderr)
     return 0
+
+
+def _cmd_tui(args: argparse.Namespace) -> int:
+    from cli_use import tui
+    if args.snapshot:
+        print(tui.snapshot(args.alias, refresh=args.refresh))
+        return 0
+    return tui.run(
+        start_alias=args.alias,
+        clear_screen=not args.no_clear,
+        refresh=args.refresh,
+    )
 
 
 def _daemon_start(args: argparse.Namespace) -> None:

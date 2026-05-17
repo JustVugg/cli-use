@@ -6,6 +6,7 @@ import os
 import signal
 import socket
 import sys
+import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -17,12 +18,28 @@ from cli_use.registry import RegistryEntry, merged_registry
 from cli_use import cache
 
 
-DAEMON_DIR = Path.home() / ".cli-use" / "daemons"
-
-
 def _info_path(alias: str) -> Path:
-    DAEMON_DIR.mkdir(parents=True, exist_ok=True)
-    return DAEMON_DIR / f"{alias}.json"
+    d = _daemon_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{alias}.json"
+
+
+def _daemon_dir() -> Path:
+    try:
+        d = config.config_dir() / "daemons"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    except OSError:
+        fallback = Path(tempfile.gettempdir()) / f"cli-use-daemons-{_user_id()}"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def _user_id() -> str:
+    getuid = getattr(os, "getuid", None)
+    if getuid is None:
+        return os.environ.get("USERNAME") or os.environ.get("USER") or "user"
+    return str(getuid())
 
 
 def _resolve(alias: str) -> RegistryEntry | None:
@@ -123,7 +140,7 @@ def stop(alias: str) -> None:
 
 def list_running() -> list[tuple[str, int]]:
     out = []
-    for p in DAEMON_DIR.glob("*.json"):
+    for p in _daemon_dir().glob("*.json"):
         alias = p.stem
         if is_running(alias):
             data = json.loads(p.read_text(encoding="utf-8"))

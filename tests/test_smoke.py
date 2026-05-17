@@ -142,6 +142,90 @@ class TestHighLevelUX(unittest.TestCase):
         r = self._cli_use("list")
         self.assertNotIn("tmpmock", r.stdout)
 
+    def test_tui_snapshot_home(self):
+        r = self._cli_use("tui", "--snapshot")
+        self.assertIn("cli-use TUI", r.stdout)
+        self.assertIn("Aliases", r.stdout)
+        self.assertIn("fs", r.stdout)
+
+    def test_tui_snapshot_alias_uses_cached_tools(self):
+        mock_cmd = f"{shlex.quote(sys.executable)} {shlex.quote(str(ROOT / 'examples' / 'mock_mcp_server.py'))}"
+        self._cli_use("add", "mock", "--from", f"local:{mock_cmd}",
+                      "--description", "Local mock for tests")
+        r = self._cli_use("tui", "mock", "--snapshot")
+        self.assertIn("mock - mock", r.stdout)
+        self.assertIn("greet", r.stdout)
+
+
+class TestTUIHelpers(unittest.TestCase):
+    def test_coerce_schema_value_boolean(self):
+        from cli_use import tui
+        self.assertIs(tui.coerce_schema_value("yes", {"type": "boolean"}), True)
+        self.assertIs(tui.coerce_schema_value("no", {"type": "boolean"}), False)
+
+    def test_coerce_schema_value_json(self):
+        from cli_use import tui
+        self.assertEqual(tui.coerce_schema_value('{"a": 1}', {"type": "object"}), {"a": 1})
+        self.assertEqual(tui.coerce_schema_value("[1, 2]", {"type": "array"}), [1, 2])
+
+
+class TestDiscovery(unittest.TestCase):
+    def test_extract_npx_config_from_glama_html(self):
+        from cli_use import discovery
+
+        html = (
+            '<pre><code class="raw-code">{'
+            '&quot;mcpServers&quot;:{&quot;filesystem&quot;:{'
+            '&quot;command&quot;:&quot;npx&quot;,'
+            '&quot;args&quot;:[&quot;-y&quot;,&quot;@modelcontextprotocol/server-filesystem&quot;,&quot;/Users/username/Desktop&quot;]'
+            "}}}</code></pre>"
+        )
+        configs = discovery.extract_server_configs(html)
+        self.assertEqual(len(configs), 1)
+        source, args, args_hint = discovery.source_from_config(configs[0])
+        self.assertEqual(source.type, "npm")
+        self.assertEqual(source.package, "@modelcontextprotocol/server-filesystem")
+        self.assertEqual(args, [])
+        self.assertIn("/Users/username/Desktop", args_hint)
+
+    def test_discover_cli_cached_completion(self):
+        from cli_use import discovery
+
+        cli_home = tempfile.mkdtemp(prefix="cliuse-home-")
+        old_home = os.environ.get("CLI_USE_HOME")
+        try:
+            os.environ["CLI_USE_HOME"] = cli_home
+            discovery.write_cache(
+                [
+                    discovery.GlamaServer(
+                        id="stub1",
+                        namespace="stubns",
+                        slug="stub-server",
+                        name="Stub Server",
+                        description="Stub MCP server for tests.",
+                        attributes=["hosting:local-only"],
+                    )
+                ]
+            )
+            env = {
+                **os.environ,
+                "PYTHONPATH": str(ROOT),
+                "CLI_USE_HOME": cli_home,
+            }
+            r = subprocess.run(
+                [sys.executable, "-m", "cli_use.cli", "discover", "--complete", "stubns"],
+                capture_output=True, text=True, env=env,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("stubns/stub-server", r.stdout)
+        finally:
+            import shutil
+            if old_home is None:
+                os.environ.pop("CLI_USE_HOME", None)
+            else:
+                os.environ["CLI_USE_HOME"] = old_home
+            shutil.rmtree(cli_home, ignore_errors=True)
+
 class TestV03Features(unittest.TestCase):
     """Tests for v0.3: cache, batch, openapi, completions."""
 
